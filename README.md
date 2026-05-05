@@ -121,6 +121,10 @@ theme = "btop"
 hidden_agents = ["codex"]
 ```
 
+### Language
+
+abtop auto-detects the UI language from `LANG` — any value starting with `zh` switches to Simplified Chinese, otherwise English. Override with `ABTOP_LANG=zh` or `ABTOP_LANG=en`.
+
 ## Key Bindings
 
 | Key                | Action                               |
