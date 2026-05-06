@@ -8,7 +8,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use super::{btop_block, fmt_tokens, grad_at, make_gradient, remaining_bar, styled_label};
+use super::{btop_block, fmt_age, fmt_tokens, grad_at, make_gradient, remaining_bar, styled_label};
 
 /// Data considered "stale" when its updated_at is older than this many seconds.
 const STALE_SECS: u64 = 600;
@@ -131,10 +131,7 @@ fn draw_source_column(
     let ago_secs = rl.updated_at.map(|ts| now.saturating_sub(ts));
     let is_stale = ago_secs.is_some_and(|s| s > STALE_SECS);
 
-    let ago_label = t("quota.ago");
-    let fresh_str = ago_secs
-        .map(|s| format!("{}{}", s, ago_label))
-        .unwrap_or_default();
+    let fresh_str = ago_secs.map(fmt_age).unwrap_or_default();
     let fresh_color = if is_stale {
         theme.inactive_fg
     } else {
