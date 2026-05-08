@@ -527,7 +527,8 @@ impl ClaudeCollector {
             }
         };
 
-        let context_window = context_window_for_model(&model, max_context_tokens);
+        let configured_model = read_configured_model(&sf.cwd);
+        let context_window = context_window_for_model(&model, &configured_model, max_context_tokens);
         let context_percent = if context_window > 0 {
             (last_context_tokens as f64 / context_window as f64) * 100.0
         } else {
@@ -1679,8 +1680,8 @@ fn truncate(s: &str, max: usize) -> String {
     }
 }
 
-fn context_window_for_model(model: &str, last_context_tokens: u64) -> u64 {
-    if model.contains("[1m]") || last_context_tokens > 200_000 {
+fn context_window_for_model(transcript_model: &str, configured_model: &str, max_context_tokens: u64) -> u64 {
+    if transcript_model.contains("[1m]") || configured_model.contains("[1m]") || max_context_tokens > 200_000 {
         1_000_000
     } else {
         200_000
@@ -1732,6 +1733,34 @@ fn read_effort_from_settings(path: &Path) -> Option<String> {
         None
     } else {
         Some(level.to_string())
+    }
+}
+
+fn read_configured_model(cwd: &str) -> String {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    let cwd_path = PathBuf::from(cwd);
+    candidates.push(cwd_path.join(".claude").join("settings.local.json"));
+    candidates.push(cwd_path.join(".claude").join("settings.json"));
+    if let Some(home) = dirs::home_dir() {
+        candidates.push(home.join(".claude").join("settings.local.json"));
+        candidates.push(home.join(".claude").join("settings.json"));
+    }
+    for path in candidates {
+        if let Some(model) = read_model_from_settings(&path) {
+            return model;
+        }
+    }
+    String::new()
+}
+
+fn read_model_from_settings(path: &Path) -> Option<String> {
+    let content = fs::read_to_string(path).ok()?;
+    let val: Value = serde_json::from_str(&content).ok()?;
+    let model = val.get("model")?.as_str()?.trim();
+    if model.is_empty() {
+        None
+    } else {
+        Some(model.to_string())
     }
 }
 
@@ -2623,20 +2652,25 @@ n/Users/bob/.claude-alt/projects/-Users-bob-project/session.jsonl
     #[test]
     fn test_context_window_for_model() {
         // Base model with low token usage → 200K
-        assert_eq!(context_window_for_model("claude-opus-4-6", 50_000), 200_000);
-        // Explicit [1m] suffix → 1M regardless of token count
+        assert_eq!(context_window_for_model("claude-opus-4-6", "", 50_000), 200_000);
+        // Explicit [1m] suffix in transcript model → 1M regardless of token count
         assert_eq!(
-            context_window_for_model("claude-opus-4-6[1m]", 0),
+            context_window_for_model("claude-opus-4-6[1m]", "", 0),
+            1_000_000
+        );
+        // [1m] in configured model (from settings.json) → 1M even if transcript lacks it
+        assert_eq!(
+            context_window_for_model("claude-sonnet-4-6", "sonnet[1m]", 0),
             1_000_000
         );
         assert_eq!(
-            context_window_for_model("claude-sonnet-4-6", 100_000),
+            context_window_for_model("claude-sonnet-4-6", "", 100_000),
             200_000
         );
-        assert_eq!(context_window_for_model("unknown-model", 0), 200_000);
+        assert_eq!(context_window_for_model("unknown-model", "", 0), 200_000);
         // Token usage exceeds 200K → must be 1M window
         assert_eq!(
-            context_window_for_model("claude-opus-4-6", 250_000),
+            context_window_for_model("claude-opus-4-6", "", 250_000),
             1_000_000
         );
     }
